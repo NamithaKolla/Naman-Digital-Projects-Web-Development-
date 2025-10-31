@@ -1,0 +1,416 @@
+<!--
+Blog Website with Admin Panel - Single-file demo (runs directly in browser)
+
+How to use:
+1. Save this file as `blog_with_admin_demo.html` and open it in your browser.
+2. Public view: lists posts. Click a post to read.
+3. Admin panel: click "Admin" -> Login using credentials below. Then create, edit, delete posts.
+
+Demo admin credentials (only for demo):
+  username: admin
+  password: password123
+
+Security note: This demo stores data in localStorage and uses the browser's SubtleCrypto to hash passwords for the login check only. It is NOT production-secure. See bottom of file for example Node.js + MongoDB server API snippets and pointers to replace localStorage with a real backend.
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Blog Demo — Public + Admin</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--muted:#9aa6bf;--accent:#60a5fa;--glass:rgba(255,255,255,0.03)}
+    *{box-sizing:border-box}
+    body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial; margin:0; min-height:100vh; background:linear-gradient(180deg,#071226 0%, #0b1220 100%); color:#e6eef8}
+    header{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,0.03)}
+    .brand{display:flex;gap:12px;align-items:center}
+    .logo{width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,#60a5fa,#7dd3fc);display:flex;align-items:center;justify-content:center;color:#042b4a;font-weight:700}
+    .nav{display:flex;gap:8px}
+    .btn{background:var(--glass);border:1px solid rgba(255,255,255,0.04);padding:8px 12px;border-radius:8px;color:inherit;cursor:pointer}
+    main{display:grid;grid-template-columns:1fr 360px;gap:20px;padding:28px}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:18px;border-radius:12px;border:1px solid rgba(255,255,255,0.02)}
+    .posts{display:flex;flex-direction:column;gap:12px}
+    .post-preview{padding:12px;border-radius:8px;background:rgba(255,255,255,0.01);cursor:pointer}
+    h1,h2,h3{margin:0}
+    .muted{color:var(--muted)}
+    .right-col{position:sticky;top:18px;height:calc(100vh - 100px);overflow:auto}
+    .admin-panel{display:flex;flex-direction:column;gap:12px}
+    label{font-size:13px;color:var(--muted)}
+    input[type=text],textarea,input[type=password]{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit}
+    textarea{min-height:150px}
+    .post-actions{display:flex;gap:8px}
+    .small{font-size:13px}
+    footer{padding:18px;text-align:center;color:var(--muted);border-top:1px solid rgba(255,255,255,0.02)}
+    @media (max-width:900px){main{grid-template-columns:1fr;}.right-col{position:relative;height:auto}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">B</div>
+      <div>
+        <div style="font-weight:700">Blog Demo</div>
+        <div class="muted small">Public blog + Admin panel (single-file demo)</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="btn" id="homeBtn">Home</button>
+      <button class="btn" id="adminBtn">Admin</button>
+      <button class="btn" id="exportBtn">Export JSON</button>
+      <button class="btn" id="importBtn">Import JSON</button>
+      <input id="importFile" type="file" accept="application/json" style="display:none" />
+    </nav>
+  </header>
+
+  <main>
+    <section>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <h1 id="viewTitle">Latest posts</h1>
+          <div class="muted small" id="loggedAs"></div>
+        </div>
+        <div id="viewContent" style="margin-top:12px"></div>
+      </div>
+
+      <div style="height:20px"></div>
+
+      <div class="card" id="postDetailCard" style="display:none;margin-top:14px"></div>
+    </section>
+
+    <aside class="right-col">
+      <div class="card admin-panel" id="adminCard">
+        <div id="adminArea">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <div style="height:12px"></div>
+
+      <div class="card">
+        <h3>About</h3>
+        <p class="muted small">This demo shows CRUD for posts and a simple admin panel managed in-browser. Replace storage with a backend API for production.</p>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    Built as an in-browser demo — not for production. See comments at top for server snippets.
+  </footer>
+
+<script>
+// ---------- Demo data layer (localStorage) ----------
+const STORAGE_KEY = 'blog_demo_posts_v1';
+const ADMIN_KEY = 'blog_demo_admin_user_v1';
+
+// default admin (hashed password stored). We'll store salt+hash in localStorage on first run.
+const demoAdmin = { username: 'admin', password: 'password123' };
+
+async function sha256Hex(str) {
+  const enc = new TextEncoder();
+  const data = enc.encode(str);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+async function ensureAdmin() {
+  if (!localStorage.getItem(ADMIN_KEY)) {
+    const salt = Math.random().toString(36).slice(2);
+    const hashed = await sha256Hex(demoAdmin.password + salt);
+    localStorage.setItem(ADMIN_KEY, JSON.stringify({ username: demoAdmin.username, salt, hash: hashed }));
+  }
+}
+
+function loadPosts(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    const sample = [
+      { id: id(), title: 'Welcome to the demo blog', excerpt: 'This is a sample post stored in localStorage.', body: 'This demo shows how a simple blog CRUD admin panel can work inside the browser. Use export/import to save state.', createdAt: Date.now() },
+      { id: id(), title: 'Second post', excerpt: 'Edit or delete this post from Admin.', body: 'Try logging in as admin and edit this sample content.', createdAt: Date.now()-1000*60*60 }
+    ];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sample));
+    return sample;
+  }
+  try{ return JSON.parse(raw);}catch(e){return []}
+}
+
+function savePosts(posts){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
+}
+
+function id(){return Math.random().toString(36).slice(2,9)}
+
+// ---------- Routing & UI ----------
+let posts = loadPosts();
+let currentUser = null; // {username}
+
+const viewContent = document.getElementById('viewContent');
+const viewTitle = document.getElementById('viewTitle');
+const postDetailCard = document.getElementById('postDetailCard');
+const adminCard = document.getElementById('adminCard');
+const adminArea = document.getElementById('adminArea');
+const loggedAs = document.getElementById('loggedAs');
+
+async function init(){
+  await ensureAdmin();
+  renderHome();
+  setupButtons();
+  updateLoggedAs();
+}
+
+function setupButtons(){
+  document.getElementById('homeBtn').onclick = () => { location.hash=''; renderHome(); };
+  document.getElementById('adminBtn').onclick = () => { location.hash='#admin'; renderAdmin(); };
+  document.getElementById('exportBtn').onclick = exportJson;
+  document.getElementById('importBtn').onclick = () => document.getElementById('importFile').click();
+  document.getElementById('importFile').addEventListener('change', handleImportFile);
+}
+
+function updateLoggedAs(){
+  loggedAs.textContent = currentUser ? `Signed in as ${currentUser.username}` : '';
+}
+
+function renderHome(){
+  viewTitle.textContent = 'Latest posts';
+  postDetailCard.style.display = 'none';
+  viewContent.innerHTML = '';
+  const container = document.createElement('div');
+  container.className = 'posts';
+  const sorted = posts.slice().sort((a,b)=> b.createdAt - a.createdAt);
+  for(const p of sorted){
+    const el = document.createElement('div');
+    el.className = 'post-preview';
+    el.innerHTML = `<strong>${escapeHtml(p.title)}</strong><div class="muted small">${new Date(p.createdAt).toLocaleString()}</div><div class="muted" style="margin-top:6px">${escapeHtml(p.excerpt||p.body.slice(0,140))}</div>`;
+    el.onclick = () => showPost(p.id);
+    container.appendChild(el);
+  }
+  viewContent.appendChild(container);
+  renderAdminSidebar();
+}
+
+function showPost(postId){
+  const p = posts.find(x=>x.id===postId);
+  if(!p) return renderHome();
+  viewTitle.textContent = p.title;
+  postDetailCard.style.display = 'block';
+  postDetailCard.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><h2>${escapeHtml(p.title)}</h2><div class=\"muted small\">${new Date(p.createdAt).toLocaleString()}</div></div><div class=\"post-actions\"></div></div><hr style=\"margin:8px 0 14px\"><div>${nl2br(escapeHtml(p.body))}</div>`;
+
+  const actions = postDetailCard.querySelector('.post-actions');
+  actions.innerHTML = '';
+  const back = document.createElement('button'); back.className='btn'; back.textContent='Back'; back.onclick=renderHome; actions.appendChild(back);
+  if(currentUser){
+    const edit = document.createElement('button'); edit.className='btn'; edit.textContent='Edit'; edit.onclick=()=>editPost(p.id); actions.appendChild(edit);
+    const del = document.createElement('button'); del.className='btn'; del.textContent='Delete'; del.onclick=()=>{ if(confirm('Delete this post?')){ deletePost(p.id); }}; actions.appendChild(del);
+  }
+}
+
+function renderAdminSidebar(){
+  // if on small screen, skip
+  if(window.innerWidth<900) return;
+  renderAdminArea();
+}
+
+function renderAdmin(){
+  location.hash='#admin';
+  renderAdminArea();
+}
+
+async function renderAdminArea(){
+  await ensureAdmin();
+  adminArea.innerHTML = '';
+  if(!currentUser){
+    // show login
+    const frag = document.createElement('div');
+    frag.innerHTML = `<h3>Admin login</h3><div class=\"muted small\" style=\"margin-bottom:8px\">Sign in to manage posts</div>
+      <label>Username</label>
+      <input id=\"loginUser\" type=\"text\" value=\"admin\" />
+      <label>Password</label>
+      <input id=\"loginPass\" type=\"password\" />
+      <div style=\"display:flex;gap:8px;margin-top:8px\"> <button class=\"btn\" id=\"loginBtn\">Sign in</button> <button class=\"btn\" id=\"demoResetBtn\">Reset demo data</button> </div>`;
+    adminArea.appendChild(frag);
+    document.getElementById('loginBtn').onclick = handleLogin;
+    document.getElementById('demoResetBtn').onclick = resetDemoData;
+    return;
+  }
+
+  // admin is signed in: show controls
+  const frag = document.createElement('div');
+  frag.innerHTML = `<div style=\"display:flex;justify-content:space-between;align-items:center\"><h3>Admin panel</h3><div class=\"muted small\">${currentUser.username}</div></div>
+    <div class=\"muted small\">Create or edit posts below.</div>
+    <hr />
+    <label>Title</label>
+    <input id=\"postTitle\" type=\"text\" />
+    <label>Excerpt (short summary)</label>
+    <input id=\"postExcerpt\" type=\"text\" />
+    <label>Body (supports plain text)</label>
+    <textarea id=\"postBody\"></textarea>
+    <div style=\"display:flex;gap:8px;margin-top:8px\"> <button class=\"btn\" id=\"createPostBtn\">Create Post</button> <button class=\"btn\" id=\"logoutBtn\">Sign out</button> </div>
+    <hr />
+    <h4>Your posts</h4>
+    <div id=\"adminPostsList\"></div>`;
+  adminArea.appendChild(frag);
+
+  document.getElementById('createPostBtn').onclick = createPostFromForm;
+  document.getElementById('logoutBtn').onclick = () => { currentUser = null; updateLoggedAs(); renderAdminArea(); renderHome(); };
+  renderAdminPostsList();
+}
+
+function renderAdminPostsList(){
+  const list = document.getElementById('adminPostsList');
+  list.innerHTML = '';
+  const sorted = posts.slice().sort((a,b)=> b.createdAt - a.createdAt);
+  for(const p of sorted){
+    const el = document.createElement('div');
+    el.style.padding='8px'; el.style.borderRadius='8px'; el.style.marginBottom='8px'; el.style.background='rgba(255,255,255,0.01)';
+    el.innerHTML = `<strong>${escapeHtml(p.title)}</strong><div class=\"muted small\">${new Date(p.createdAt).toLocaleString()}</div><div style=\"margin-top:8px;display:flex;gap:8px\"></div>`;
+    const actions = el.querySelector('div:last-child');
+    const edit = document.createElement('button'); edit.className='btn'; edit.textContent='Edit'; edit.onclick=()=>fillEditForm(p.id); actions.appendChild(edit);
+    const del = document.createElement('button'); del.className='btn'; del.textContent='Delete'; del.onclick=()=>{ if(confirm('Delete post?')){ deletePost(p.id); renderAdminPostsList(); renderHome(); }}; actions.appendChild(del);
+    list.appendChild(el);
+  }
+}
+
+function fillEditForm(postId){
+  const p = posts.find(x=>x.id===postId);
+  if(!p) return;
+  document.getElementById('postTitle').value = p.title;
+  document.getElementById('postExcerpt').value = p.excerpt||'';
+  document.getElementById('postBody').value = p.body;
+  // change create button to save
+  const btn = document.getElementById('createPostBtn');
+  btn.textContent = 'Save changes';
+  btn.onclick = () => saveEdit(p.id);
+}
+
+function createPostFromForm(){
+  const title = document.getElementById('postTitle').value.trim();
+  const excerpt = document.getElementById('postExcerpt').value.trim();
+  const body = document.getElementById('postBody').value.trim();
+  if(!title || !body) return alert('Provide title and body');
+  const p = { id: id(), title, excerpt, body, createdAt: Date.now() };
+  posts.push(p); savePosts(posts); renderAdminPostsList(); renderHome();
+  document.getElementById('postTitle').value=''; document.getElementById('postExcerpt').value=''; document.getElementById('postBody').value='';
+}
+
+function saveEdit(postId){
+  const title = document.getElementById('postTitle').value.trim();
+  const excerpt = document.getElementById('postExcerpt').value.trim();
+  const body = document.getElementById('postBody').value.trim();
+  if(!title||!body) return alert('Title and body required');
+  const idx = posts.findIndex(x=>x.id===postId);
+  if(idx===-1) return alert('Post not found');
+  posts[idx].title = title; posts[idx].excerpt = excerpt; posts[idx].body = body; posts[idx].createdAt = Date.now();
+  savePosts(posts); renderAdminPostsList(); renderHome();
+  const btn = document.getElementById('createPostBtn'); btn.textContent='Create Post'; btn.onclick = createPostFromForm;
+}
+
+function editPost(postId){
+  // open admin edit if signed in else prompt login
+  if(!currentUser){ location.hash='#admin'; renderAdminArea(); alert('Sign in as admin to edit posts'); return; }
+  fillEditForm(postId);
+}
+
+function deletePost(postId){
+  posts = posts.filter(x=>x.id!==postId); savePosts(posts); renderAdminPostsList(); renderHome();
+}
+
+// ---------- Login ----------
+async function handleLogin(){
+  const user = document.getElementById('loginUser').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  if(!user||!pass) return alert('Enter username and password');
+  const stored = JSON.parse(localStorage.getItem(ADMIN_KEY));
+  if(!stored) return alert('Admin not set');
+  const h = await sha256Hex(pass + stored.salt);
+  if(user===stored.username && h===stored.hash){
+    currentUser = { username: user };
+    updateLoggedAs();
+    renderAdminArea();
+    renderHome();
+    alert('Signed in');
+  } else alert('Invalid credentials');
+}
+
+// ---------- Import/Export ----------
+function exportJson(){
+  const payload = { posts, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='blog-demo-export.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function handleImportFile(e){
+  const f = e.target.files[0]; if(!f) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    try{
+      const obj = JSON.parse(ev.target.result);
+      if(Array.isArray(obj.posts)){
+        posts = obj.posts; savePosts(posts); alert('Imported posts'); renderAdminPostsList(); renderHome();
+      } else alert('Invalid file');
+    }catch(err){alert('Invalid JSON')}
+  };
+  reader.readAsText(f);
+}
+
+function resetDemoData(){
+  if(!confirm('Reset demo posts (this overwrites posts)?')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  posts = loadPosts();
+  renderAdminArea(); renderHome();
+}
+
+// ---------- Utilities ----------
+function escapeHtml(s){ if(!s) return ''; return s.replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+function nl2br(s){ return s.replace(/\n/g,'<br>'); }
+
+// ---------- Boot ----------
+init();
+
+// ---------- Optional: server snippets & guidance ----------
+/*
+If you want a proper backend, replace the client-side store with API calls.
+Minimal Node.js + Express + MongoDB example (use separately on your machine/server):
+
+// server.js (Node.js + Express + MongoDB)
+const express = require('express');
+const { MongoClient, ObjectId } = require('mongodb');
+const app = express();
+app.use(express.json());
+const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
+const client = new MongoClient(uri);
+async function main(){
+  await client.connect();
+  const db = client.db('blog_demo');
+  const posts = db.collection('posts');
+
+  app.get('/api/posts', async (req,res)=>{
+    const all = await posts.find().sort({createdAt:-1}).toArray(); res.json(all);
+  });
+
+  app.post('/api/posts', async (req,res)=>{
+    const doc = { title:req.body.title, excerpt:req.body.excerpt, body:req.body.body, createdAt: Date.now() };
+    const r = await posts.insertOne(doc); res.json(r.ops ? r.ops[0] : { ...doc, _id: r.insertedId });
+  });
+
+  app.put('/api/posts/:id', async (req,res)=>{
+    const _id = new ObjectId(req.params.id);
+    await posts.updateOne({_id}, { $set: { title:req.body.title, excerpt:req.body.excerpt, body:req.body.body, createdAt: Date.now() }});
+    res.json({ok:true});
+  });
+
+  app.delete('/api/posts/:id', async (req,res)=>{
+    const _id = new ObjectId(req.params.id); await posts.deleteOne({_id}); res.json({ok:true});
+  });
+
+  app.listen(3000, ()=>console.log('API listening on http://localhost:3000'));
+}
+main().catch(console.error);
+
+Client-side: call these endpoints instead of using localStorage. Protect admin endpoints with proper auth (JWT/session + HTTPS). Do NOT use the demo admin approach in production.
+*/
+
+</script>
+</body>
+</html>

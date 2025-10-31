@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mock E-commerce Product Page — Naman Digital</title>
+  <style>
+    /* ====== Basic Reset ====== */
+    * { box-sizing: border-box; margin:0; padding:0; }
+    html,body { height:100%; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; color:#111; background:#f7f7fb; }
+
+    /* ====== Layout ====== */
+    header { background:linear-gradient(90deg,#3b82f6,#6366f1); color:white; padding:18px 20px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    header h1 { font-size:1.05rem; letter-spacing:0.2px; }
+    .container { max-width:1200px; margin:24px auto; padding:0 20px; }
+
+    /* ====== Top Controls ====== */
+    .topbar { display:flex; gap:12px; align-items:center; margin-bottom:18px; flex-wrap:wrap; }
+    .search { flex:1; min-width:180px; display:flex; gap:8px; }
+    .search input { width:100%; padding:10px 12px; border-radius:8px; border:1px solid #e6e9ef; background:white; }
+    select, button, input[type=range] { padding:10px 12px; border-radius:8px; border:1px solid #e6e9ef; background:white; }
+    .filters { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+
+    /* ====== Grid ====== */
+    .main { display:grid; grid-template-columns: 1fr 320px; gap:20px; align-items:start; }
+    @media (max-width: 940px) { .main { grid-template-columns: 1fr; } .sidebar { order:2; } }
+
+    /* ====== Product Grid ====== */
+    .product-grid { display:grid; grid-template-columns: repeat(3,1fr); gap:16px; }
+    @media (max-width: 1100px) { .product-grid { grid-template-columns: repeat(2,1fr); } }
+    @media (max-width: 640px) { .product-grid { grid-template-columns: repeat(1,1fr); } }
+
+    .card { background:white; border-radius:12px; padding:12px; box-shadow: 0 1px 6px rgba(15,23,42,0.05); display:flex; gap:10px; align-items:flex-start; }
+    .thumb { width:120px; height:100px; border-radius:8px; background-size:cover; background-position:center; flex-shrink:0; }
+    .meta { flex:1; display:flex; flex-direction:column; gap:8px; }
+    .meta h3 { font-size:1rem; }
+    .meta p { font-size:0.9rem; color:#475569; }
+    .price-row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .price { font-weight:700; }
+
+    .tag { font-size:0.75rem; padding:4px 8px; border-radius:999px; background:#eef2ff; color:#4338ca; display:inline-block; }
+
+    .card-actions { display:flex; gap:8px; align-items:center; }
+    .btn { cursor:pointer; border:0; padding:8px 12px; border-radius:8px; background:#111827; color:white; }
+    .btn.ghost { background:transparent; color:#374151; border:1px solid #e6e9ef; }
+    .btn.small { padding:6px 8px; font-size:0.9rem; }
+
+    /* ====== Sidebar / Cart ====== */
+    .sidebar { background:white; padding:14px; border-radius:12px; box-shadow:0 1px 6px rgba(15,23,42,0.05); position:sticky; top:20px; height:fit-content; }
+    .cart-item { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
+    .qty { display:flex; gap:6px; align-items:center; }
+    .muted { color:#6b7280; font-size:0.92rem; }
+
+    /* ====== Footer & Misc ====== */
+    footer { margin-top:26px; text-align:center; color:#6b7280; font-size:0.9rem; padding:20px 0; }
+
+    /* ====== Modal ====== */
+    .modal-backdrop { position:fixed; inset:0; background:rgba(2,6,23,0.5); display:flex; align-items:center; justify-content:center; z-index:60; }
+    .modal { width:420px; max-width:94%; background:white; padding:18px; border-radius:12px; }
+    .progress { height:8px; background:#eef2ff; border-radius:999px; overflow:hidden; }
+    .progress-inner { height:100%; width:0%; background:#22c55e; transition:width 600ms ease; }
+
+    /* ====== Tiny responsiveness tweaks ====== */
+    .topbar .cart-btn { display:flex; gap:8px; align-items:center; }
+    .empty { text-align:center; padding:24px; color:#6b7280; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Naman Digital — E-commerce Product Page</h1>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <div class="muted" id="cart-count-display">Cart: 0 items</div>
+      <button class="btn" id="open-cart">View Cart</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="topbar">
+      <div class="search">
+        <input id="search-input" placeholder="Search products, e.g. headphones" />
+        <select id="sort-by" title="Sort">
+          <option value="popular">Sort: Popular</option>
+          <option value="price-asc">Price: Low → High</option>
+          <option value="price-desc">Price: High → Low</option>
+          <option value="new">Newest</option>
+        </select>
+      </div>
+
+      <div class="filters">
+        <select id="category-filter" title="Category">
+          <option value="all">All categories</option>
+        </select>
+
+        <label style="display:flex; align-items:center; gap:8px;">
+          <span class="muted">Max price</span>
+          <input id="price-range" type="range" min="0" max="500" value="500" />
+          <span id="price-range-val" class="muted">₹500</span>
+        </label>
+
+        <button id="reset-filters" class="btn ghost small">Reset</button>
+      </div>
+    </section>
+
+    <section class="main">
+      <div>
+        <div id="product-grid" class="product-grid" aria-live="polite"></div>
+        <div id="no-results" class="empty" style="display:none;">No products match your filters.</div>
+      </div>
+
+      <aside class="sidebar">
+        <h3>Shopping Cart</h3>
+        <div id="cart-items"></div>
+        <hr style="margin:10px 0;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="muted">Subtotal</div>
+          <div id="cart-subtotal" style="font-weight:700">₹0</div>
+        </div>
+        <div style="margin-top:12px; display:flex; gap:8px;">
+          <button id="checkout-btn" class="btn" style="flex:1">Checkout (Mock)</button>
+          <button id="clear-cart" class="btn ghost small">Clear</button>
+        </div>
+        <p style="margin-top:10px;" class="muted">Demo integrates a simulated Stripe flow. Replace with real integration when ready.</p>
+      </aside>
+    </section>
+
+    <!-- Modal for mock Stripe -->
+    <div id="modal-root" style="display:none;"></div>
+
+    <footer>
+      Built with ❤️ by <strong>Naman Digital Organisation</strong> — demo mock checkout.
+    </footer>
+  </main>
+
+  <script>
+    /***********************
+     * Sample product data
+     * In a real app this comes from a server/API
+     ***********************/
+    const PRODUCTS = [
+      { id: 'p1', title: 'Wireless Headphones', price: 299, category: 'Audio', desc: 'Comfortable over-ear headphones with rich bass.', img: 'https://picsum.photos/seed/headphones/400/300' , popular: 89, createdAt: '2025-05-12'},
+      { id: 'p2', title: 'Smart Watch', price: 199, category: 'Wearables', desc: 'Track activity and receive notifications.', img: 'https://picsum.photos/seed/watch/400/300', popular: 72, createdAt: '2025-06-22'},
+      { id: 'p3', title: 'Electric Kettle', price: 59, category: 'Home', desc: 'Fast-boil kettle, auto shut-off.', img: 'https://picsum.photos/seed/kettle/400/300', popular: 40, createdAt: '2024-11-05'},
+      { id: 'p4', title: 'Bluetooth Speaker', price: 129, category: 'Audio', desc: 'Portable speaker with 12 hour battery.', img: 'https://picsum.photos/seed/speaker/400/300', popular: 60, createdAt: '2025-02-28'},
+      { id: 'p5', title: 'Gaming Mouse', price: 49, category: 'Accessories', desc: 'High precision sensor and RGB.', img: 'https://picsum.photos/seed/mouse/400/300', popular: 95, createdAt: '2025-07-03'},
+      { id: 'p6', title: 'Laptop Stand', price: 39, category: 'Accessories', desc: 'Ergonomic and foldable', img: 'https://picsum.photos/seed/stand/400/300', popular: 30, createdAt: '2024-09-30'},
+      { id: 'p7', title: 'Fitness Band', price: 79, category: 'Wearables', desc: 'Sleep tracking and heart rate monitor.', img: 'https://picsum.photos/seed/fitness/400/300', popular: 55, createdAt: '2025-01-12'},
+      { id: 'p8', title: 'Air Purifier', price: 249, category: 'Home', desc: 'HEPA filter for cleaner air.', img: 'https://picsum.photos/seed/purifier/400/300', popular: 20, createdAt: '2025-03-19'}
+    ];
+
+    /* ====== App State ====== */
+    const state = {
+      products: PRODUCTS.slice(),
+      filters: {
+        category: 'all',
+        maxPrice: 500,
+        search: '',
+        sort: 'popular'
+      },
+      cart: {} // {productId: qty}
+    };
+
+    /* ====== Elements ====== */
+    const productGrid = document.getElementById('product-grid');
+    const searchInput = document.getElementById('search-input');
+    const categoryFilter = document.getElementById('category-filter');
+    const priceRange = document.getElementById('price-range');
+    const priceRangeVal = document.getElementById('price-range-val');
+    const resetFilters = document.getElementById('reset-filters');
+    const sortBy = document.getElementById('sort-by');
+    const cartItemsEl = document.getElementById('cart-items');
+    const cartSubtotalEl = document.getElementById('cart-subtotal');
+    const clearCartBtn = document.getElementById('clear-cart');
+    const checkoutBtn = document.getElementById('checkout-btn');
+    const modalRoot = document.getElementById('modal-root');
+    const openCartBtn = document.getElementById('open-cart');
+    const cartCountDisplay = document.getElementById('cart-count-display');
+    const noResultsEl = document.getElementById('no-results');
+
+    /***********************
+     * Initialization
+     ***********************/
+    function init() {
+      // populate categories
+      const cats = new Set(PRODUCTS.map(p => p.category));
+      cats.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        categoryFilter.appendChild(opt);
+      });
+
+      // price max based on data
+      const maxPrice = Math.ceil(Math.max(...PRODUCTS.map(p => p.price)) / 10) * 10;
+      priceRange.max = Math.max(500, maxPrice);
+      priceRange.value = priceRange.max;
+      state.filters.maxPrice = Number(priceRange.value);
+      priceRangeVal.textContent = `₹${priceRange.value}`;
+
+      // load cart from localStorage
+      const saved = localStorage.getItem('demo_cart');
+      if (saved) state.cart = JSON.parse(saved);
+
+      attachListeners();
+      render();
+    }
+
+    /***********************
+     * Event Listeners
+     ***********************/
+    function attachListeners() {
+      searchInput.addEventListener('input', (e) => {
+        state.filters.search = e.target.value.trim();
+        render();
+      });
+
+      categoryFilter.addEventListener('change', (e) => {
+        state.filters.category = e.target.value;
+        render();
+      });
+
+      priceRange.addEventListener('input', (e) => {
+        state.filters.maxPrice = Number(e.target.value);
+        priceRangeVal.textContent = `₹${e.target.value}`;
+        render();
+      });
+
+      sortBy.addEventListener('change', (e) => {
+        state.filters.sort = e.target.value;
+        render();
+      });
+
+      resetFilters.addEventListener('click', (e) => {
+        state.filters = { category: 'all', maxPrice: priceRange.max, search: '', sort: 'popular' };
+        searchInput.value = '';
+        categoryFilter.value = 'all';
+        priceRange.value = priceRange.max;
+        priceRangeVal.textContent = `₹${priceRange.value}`;
+        sortBy.value = 'popular';
+        render();
+      });
+
+      clearCartBtn.addEventListener('click', () => {
+        state.cart = {};
+        saveCart();
+        renderCart();
+        updateCartDisplay();
+      });
+
+      checkoutBtn.addEventListener('click', openMockCheckout);
+      openCartBtn.addEventListener('click', () => {
+        // scroll to cart sidebar (mobile-friendly)
+        window.scrollTo({ top: document.querySelector('.sidebar').offsetTop - 20, behavior:'smooth' });
+      });
+    }
+
+    /***********************
+     * Rendering Products
+     ***********************/
+    function render() {
+      const filtered = applyFilters();
+      renderProducts(filtered);
+      renderCart();
+      updateCartDisplay();
+    }
+
+    function applyFilters() {
+      let list = state.products.slice();
+
+      // search
+      if (state.filters.search) {
+        const q = state.filters.search.toLowerCase();
+        list = list.filter(p => p.title.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q));
+      }
+
+      // category
+      if (state.filters.category !== 'all') {
+        list = list.filter(p => p.category === state.filters.category);
+      }
+
+      // price
+      list = list.filter(p => p.price <= state.filters.maxPrice);
+
+      // sort
+      if (state.filters.sort === 'price-asc') list.sort((a,b)=>a.price-b.price);
+      else if (state.filters.sort === 'price-desc') list.sort((a,b)=>b.price-a.price);
+      else if (state.filters.sort === 'new') list.sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
+      else list.sort((a,b)=> b.popular - a.popular);
+
+      return list;
+    }
+
+    function renderProducts(list) {
+      productGrid.innerHTML = '';
+      if (!list.length) {
+        noResultsEl.style.display = 'block';
+        return;
+      } else {
+        noResultsEl.style.display = 'none';
+      }
+
+      list.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        const thumb = document.createElement('div');
+        thumb.className = 'thumb';
+        thumb.style.backgroundImage = `url(${p.img})`;
+
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+
+        const h3 = document.createElement('h3');
+        h3.textContent = p.title;
+
+        const desc = document.createElement('p');
+        desc.textContent = p.desc;
+
+        const priceRow = document.createElement('div');
+        priceRow.className = 'price-row';
+
+        const price = document.createElement('div');
+        price.className = 'price';
+        price.textContent = `₹${p.price}`;
+
+        const tag = document.createElement('div');
+        tag.className = 'tag';
+        tag.textContent = p.category;
+
+        priceRow.appendChild(price);
+        priceRow.appendChild(tag);
+
+        const actions = document.createElement('div');
+        actions.className = 'card-actions';
+
+        const addBtn = document.createElement('button');
+        addBtn.className = 'btn small';
+        addBtn.textContent = 'Add to cart';
+        addBtn.addEventListener('click', () => addToCart(p.id));
+
+        const viewBtn = document.createElement('button');
+        viewBtn.className = 'btn ghost small';
+        viewBtn.textContent = 'Quick view';
+        viewBtn.addEventListener('click', () => openQuickView(p));
+
+        actions.appendChild(addBtn);
+        actions.appendChild(viewBtn);
+
+        meta.appendChild(h3);
+        meta.appendChild(desc);
+        meta.appendChild(priceRow);
+        meta.appendChild(actions);
+
+        card.appendChild(thumb);
+        card.appendChild(meta);
+
+        productGrid.appendChild(card);
+      });
+    }
+
+    /***********************
+     * Cart Management
+     ***********************/
+    function addToCart(productId, qty = 1) {
+      state.cart[productId] = (state.cart[productId] || 0) + qty;
+      saveCart();
+      renderCart();
+      updateCartDisplay();
+      // small visual feedback
+      flashMessage('Added to cart');
+    }
+
+    function removeFromCart(productId) {
+      delete state.cart[productId];
+      saveCart();
+      renderCart();
+      updateCartDisplay();
+    }
+
+    function updateQty(productId, qty) {
+      if (qty <= 0) {
+        removeFromCart(productId);
+        return;
+      }
+      state.cart[productId] = qty;
+      saveCart();
+      renderCart();
+      updateCartDisplay();
+    }
+
+    function saveCart() {
+      localStorage.setItem('demo_cart', JSON.stringify(state.cart));
+    }
+
+    function renderCart() {
+      cartItemsEl.innerHTML = '';
+      const ids = Object.keys(state.cart);
+      if (!ids.length) {
+        cartItemsEl.innerHTML = '<div class="empty">Your cart is empty.</div>';
+        cartSubtotalEl.textContent = '₹0';
+        return;
+      }
+
+      let subtotal = 0;
+      ids.forEach(id => {
+        const product = PRODUCTS.find(p => p.id === id);
+        const qty = state.cart[id];
+        const row = document.createElement('div');
+        row.className = 'cart-item';
+
+        const thumb = document.createElement('div');
+        thumb.style.width = '48px';
+        thumb.style.height = '40px';
+        thumb.style.backgroundImage = `url(${product.img})`;
+        thumb.style.backgroundSize = 'cover';
+        thumb.style.borderRadius = '6px';
+
+        const info = document.createElement('div');
+        info.style.flex = '1';
+        info.innerHTML = `<div style="font-weight:600">${product.title}</div><div class="muted">₹${product.price} each</div>`;
+
+        const qtybox = document.createElement('div');
+        qtybox.className = 'qty';
+        const minus = document.createElement('button');
+        minus.className = 'btn ghost small';
+        minus.textContent = '-';
+        minus.addEventListener('click', () => updateQty(id, qty - 1));
+        const qtyEl = document.createElement('div');
+        qtyEl.textContent = qty;
+        qtyEl.style.minWidth = '24px';
+        qtyEl.style.textAlign = 'center';
+        const plus = document.createElement('button');
+        plus.className = 'btn small';
+        plus.textContent = '+';
+        plus.addEventListener('click', () => updateQty(id, qty + 1));
+        const remove = document.createElement('button');
+        remove.className = 'btn ghost small';
+        remove.textContent = 'Remove';
+        remove.addEventListener('click', () => removeFromCart(id));
+
+        qtybox.appendChild(minus);
+        qtybox.appendChild(qtyEl);
+        qtybox.appendChild(plus);
+        qtybox.appendChild(remove);
+
+        row.appendChild(thumb);
+        row.appendChild(info);
+        row.appendChild(qtybox);
+
+        cartItemsEl.appendChild(row);
+
+        subtotal += product.price * qty;
+      });
+
+      cartSubtotalEl.textContent = `₹${subtotal}`;
+    }
+
+    function updateCartDisplay() {
+      const count = Object.values(state.cart).reduce((s,v)=>s+v,0);
+      cartCountDisplay.textContent = `Cart: ${count} item${count !== 1 ? 's' : ''}`;
+      // small badge animation could be added
+    }
+
+    /***********************
+     * Quick View modal
+     ***********************/
+    function openQuickView(product) {
+      showModal(`
+        <h3>${product.title}</h3>
+        <img src="${product.img}" alt="${product.title}" style="width:100%; border-radius:8px; margin:8px 0;">
+        <p class="muted">${product.desc}</p>
+        <div style="display:flex; justify-content:space-between;align-items:center; margin-top:12px;">
+          <div style="font-weight:700">₹${product.price}</div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn" onclick="(function(){ addToCart('${product.id}',1); closeModal(); })()">Add to cart</button>
+            <button class="btn ghost" onclick="closeModal()">Close</button>
+          </div>
+        </div>
+      `);
+    }
+
+    /***********************
+     * Modal utilities
+     ***********************/
+    function showModal(html) {
+      modalRoot.style.display = 'block';
+      modalRoot.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal">${html}</div>
+      </div>`;
+      // close when clicking backdrop
+      modalRoot.querySelector('.modal-backdrop').addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal-backdrop')) closeModal();
+      });
+    }
+
+    function closeModal() {
+      modalRoot.style.display = 'none';
+      modalRoot.innerHTML = '';
+    }
+
+    /***********************
+     * Mock Stripe checkout
+     * - This simulates the checkout experience with a progress bar.
+     * - Replace with real Stripe Checkout or Payment Intents by:
+     *   1) Calling your backend to create a PaymentIntent / CheckoutSession
+     *   2) Using stripe.redirectToCheckout or stripe.confirmCardPayment
+     ***********************/
+    function openMockCheckout() {
+      const items = Object.entries(state.cart).map(([id,qty]) => ({ ...PRODUCTS.find(p=>p.id===id), qty }));
+      if (!items.length) {
+        flashMessage('Cart is empty');
+        return;
+      }
+      const subtotal = items.reduce((s,i)=> s + i.price * i.qty, 0);
+
+      showModal(`
+        <h3>Mock Checkout</h3>
+        <p class="muted">You are purchasing ${items.length} product(s). This is a simulated payment flow for demo purposes.</p>
+        <div style="margin:8px 0;">
+          <strong>Subtotal: ₹${subtotal}</strong>
+        </div>
+
+        <div style="margin:10px 0;">
+          <label class="muted">Name</label>
+          <input id="mock-name" placeholder="Full name" style="width:100%; padding:8px; margin-top:6px; border-radius:8px; border:1px solid #e6e9ef;" />
+        </div>
+
+        <div style="margin-top:12px;">
+          <div class="progress" aria-hidden="true"><div class="progress-inner" id="mock-progress"></div></div>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="btn" id="mock-pay-btn">Pay (Mock)</button>
+          <button class="btn ghost" id="mock-cancel-btn">Cancel</button>
+        </div>
+      `);
+
+      // hook modal buttons
+      const payBtn = document.getElementById('mock-pay-btn');
+      const cancelBtn = document.getElementById('mock-cancel-btn');
+      const prog = document.getElementById('mock-progress');
+
+      cancelBtn.addEventListener('click', closeModal);
+      payBtn.addEventListener('click', async () => {
+        payBtn.disabled = true;
+        payBtn.textContent = 'Processing...';
+        // animate progress
+        prog.style.width = '0%';
+        await sleep(200);
+        prog.style.width = '40%';
+        await sleep(600);
+        prog.style.width = '75%';
+        await sleep(700);
+        prog.style.width = '100%';
+        await sleep(450);
+
+        // Mock success
+        closeModal();
+        flashMessage('Payment successful — order placed!');
+        // clear cart
+        state.cart = {};
+        saveCart();
+        renderCart();
+        updateCartDisplay();
+      });
+    }
+
+    function sleep(ms) { return new Promise(r=>setTimeout(r, ms)); }
+
+    /***********************
+     * Messages / Utilities
+     ***********************/
+    function flashMessage(text) {
+      const el = document.createElement('div');
+      el.textContent = text;
+      el.style.position = 'fixed';
+      el.style.right = '20px';
+      el.style.bottom = '20px';
+      el.style.padding = '10px 14px';
+      el.style.background = '#111827';
+      el.style.color = 'white';
+      el.style.borderRadius = '10px';
+      el.style.boxShadow = '0 6px 18px rgba(2,6,23,0.2)';
+      el.style.zIndex = 9999;
+      document.body.appendChild(el);
+      setTimeout(()=> el.style.opacity = '0.02', 1600);
+      setTimeout(()=> el.remove(), 2100);
+    }
+
+    /***********************
+     * Expose addToCart for quick view inline handlers
+     ***********************/
+    window.addToCart = addToCart;
+    window.closeModal = closeModal;
+
+    // Start app
+    init();
+  </script>
+</body>
+</html>
